@@ -1,6 +1,6 @@
 # Sharp polynomial testing
 
-See e.g. https://arxiv.org/pdf/1302.1441.pdf
+See https://arxiv.org/pdf/0808.0284.pdf https://arxiv.org/pdf/1302.1441.pdf
 
 # Here is the old README
 
