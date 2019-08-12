@@ -1,0 +1,98 @@
+#
+# Genius (https://www.jirka.org/genius.html) code to create the matrix of
+# powers to use in the rref-d*.h files
+#
+
+#
+# Currently n always equals 3 or 2
+#
+
+#
+# The parameters we will be using
+#
+n = 2; # or 3 (3 doesn't currently work)
+d = 7;
+
+
+# Computes the exponents of the homogeneous powers for
+# n variables and degree d.
+#
+function HomogeneousPowers(n,d) = (
+	p=null;
+	k=0;
+	if n == 3 then (
+		for a=0 to d do (
+			for b=0 to d-a do (
+				p@(k=k+1) = [a,b,(d-a-b)]
+			)
+		)
+	) else if n == 2 then (
+		for a=0 to d do (
+			p@(k=k+1) = [a,(d-a)]
+		)
+	) else (
+		error ("ERROR! Can't handle n != 2 or 3")
+	);
+	p
+);
+
+#
+# This next bit gets the coefficients of the homogeneous polynomial
+#
+
+
+hp = HomogeneousPowers(n,d);
+c = null;
+for k=1 to elements(hp) do (
+	c@(k) = Multinomial(hp@(k))
+);
+
+#
+# Create a matrix for the linear system
+#
+# The columns (except the last one) will correspond to the
+# terms of lower degree than d, and basically to possible undoings
+# the rows correspond to top degree terms.  The last column is really
+# the right hand side of the system.
+#
+
+M = .;
+
+#
+# This bit adds all the undoings possible for the system
+#
+for k= 1 to d-1  do (
+	p = HomogeneousPowers(n,k);
+	pd = HomogeneousPowers(n,d-k);
+	for pp in p do (
+		cc = zeros(elements(hp));
+		for ppd in pd do (
+			m = pp + ppd;
+			for l=1 to elements(hp) do (
+				if m == hp@(l) then (
+					cc@(l) = cc@(l) + Multinomial(ppd);
+					break;
+				)
+			)
+		);
+		M=[M,-cc'];
+	)
+);
+
+#
+# The right hand side of the system
+#
+M = [M,c'];
+
+#
+# Assumes that n=2
+#
+if n != 2 then error ("n=2 is an assumption!");
+
+purex = null;
+for i=1 to columns(M)-1 do if M@(1,i) != 0 then purex = [purex,i];
+purey = null;
+for i=1 to columns(M)-1 do if M@(rows(M),i) != 0 then purey = [purey,i];
+
+# print out the matrix
+M
