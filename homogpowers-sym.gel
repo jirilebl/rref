@@ -6,7 +6,7 @@
 #
 # The parameters we will be using
 #
-d = 7;
+d = 31;
 
 
 # Computes the exponents of the homogeneous powers for
@@ -93,5 +93,13 @@ for i=1 to columns(M)-1 do if M@(1,i) != 0 then purex = [purex,i];
 purey = null;
 for i=1 to columns(M)-1 do if M@(rows(M),i) != 0 then purey = [purey,i];
 
+# print out the content of the file
+print("#define ROWS " + rows(M) + " ");
+print("#define COLS " + columns(M) + " ");
+print("#define DEGREE " + d + " ");
+print("/* d = " + d + " symmetric */");
+print("ntype mm[ROWS][COLS] = {");
+
 # print out the matrix
-M
+# This bit needs to be editted to fit C
+print(M)

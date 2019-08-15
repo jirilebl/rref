@@ -15,12 +15,12 @@
 //int initc[256] = {1,2,3,4,5,6,7,8,9,10};
 int initc[256] = {0};
 
-/* moduli that work well seem to be 17, 19, 23
+/* moduli that work well seem to be 17, 19, 23, 29, 31, 37, 41
  * 13 seems to be too small, large primes mean large
  * lookup table which means cache misses, the modulus
  * should not divide the degree or we're almost always
  * fail through to the full integer rref */
-#define MODP1 23
+#define MODP1 29
 
 #define FALSE 0
 #define TRUE (!FALSE)
@@ -30,38 +30,55 @@ int initc[256] = {0};
 /* to use 64 bits also change %ld to %Ld */
 #define ntype long long
 
-//#include "rref-d9.h"
-//#include "rref-d11.h"
-//#include "rref-d13.h"
-#include "rref-d15.h"
-//#include "rref-d17.h"
-//#include "rref-d19.h"
-//#include "rref-d21.h"
+/* definition to expand macro then apply to pragma message */
+#define VALUE_TO_STRING(x) #x
+#define VALUE(x) VALUE_TO_STRING(x)
+#define VAR_NAME_VALUE(var) #var "="  VALUE(var)
 
-int purex[DEGREE-1];
-int purey[DEGREE-1];
-#define UNREACHABLES ((DEGREE-3)/2)
+//#include "rref-d7-sym.h"
+//#include "rref-d9-sym.h"
+//#include "rref-d11-sym.h"
+//#include "rref-d13-sym.h"
+//#include "rref-d15-sym.h"
+//#include "rref-d17-sym.h"
+//#include "rref-d19-sym.h"
+//#include "rref-d21-sym.h"
+//#include "rref-d23-sym.h"
+//#include "rref-d25-sym.h"
+//#include "rref-d27-sym.h"
+//#include "rref-d29-sym.h"
+#include "rref-d31-sym.h"
+
+/* the pure terms */
+int pure[DEGREE-1];
+
+/* terms in degree d-1 which never have a term in a sharp polynomial */
+#define UNREACHABLES (((DEGREE-3)/2)+((DEGREE-3)/2)%2)/2
 int unreachable[UNREACHABLES];
 
-/* this is without the last column */
-#define LOGCOLS (COLS-2*(DEGREE-1)-UNREACHABLES-1)
+/* terms of the form (xy)^k(x+y) which never occur in a sharp polynomial */
+#define UNDOABLES ((DEGREE-1)/2)
+int undoable[UNDOABLES];
+
+/* this is without the last column (undoables and pures have one term in common) */
+#define LOGCOLS (COLS-(DEGREE-1)-UNDOABLES+1-UNREACHABLES-1)
 
 int tr[LOGCOLS+1];
 
 int degx[LOGCOLS+1];
 int degy[LOGCOLS+1];
 
-//int upleft[LOGCOLS+1];
-//int upright[LOGCOLS+1];
+#define TARGETN ((DEGREE+3)/2)
 
-/* +1 if right side, -1 if left side 0 if middle */
-int rsvec[LOGCOLS+1];
+/* We are assuming only one term of the form (xy)^k in a sharp
+ * polynomial */
+#define TOCHOOSE (((TARGETN-2) + (TARGETN-2)%2)/2)
 
+/*#pragma message(VAR_NAME_VALUE(TOCHOOSE))*/
 
-#define TARGETN (((DEGREE+3)/2)+((DEGREE+3)%2))
 
 #define ROWS1 (ROWS-2)
-#define COLS1 (TARGETN-2+1)
+#define COLS1 (TOCHOOSE+1)
 unsigned int mm3[ROWS1][COLS1];
 unsigned int mm31[ROWS][COLS];
 __mpz_struct mm4[ROWS1][COLS1];
@@ -69,7 +86,9 @@ unsigned int mbit[COLS+1]; /* 1 indexed! */
 unsigned int mmod2[COLS+1]; /* 1 indexed! */
 unsigned int mmod2m[COLS1];
 
-#if ROWS1 == 8 /* deg 9 */
+#if ROWS1 == 6 /* deg 7 */
+#define FULLROWS 0x3f
+#elif ROWS1 == 8 /* deg 9 */
 #define FULLROWS 0xff
 #elif ROWS1 == 10 /* deg 11 */
 #define FULLROWS 0x3ff
@@ -83,13 +102,23 @@ unsigned int mmod2m[COLS1];
 #define FULLROWS 0x3ffff
 #elif ROWS1 == 20 /* deg 21 */
 #define FULLROWS 0xfffff
+#elif ROWS1 == 22 /* deg 23 */
+#define FULLROWS 0x3fffff
+#elif ROWS1 == 24 /* deg 25 */
+#define FULLROWS 0xffffff
+#elif ROWS1 == 26 /* deg 27 */
+#define FULLROWS 0x3ffffff
+#elif ROWS1 == 28 /* deg 29 */
+#define FULLROWS 0xfffffff
+#elif ROWS1 == 30 /* deg 31 */
+#define FULLROWS 0x3fffffff
 #else
 #error "no FULLROWS!"
 #endif
 
 /* The current place */
-int c[TARGETN-2] = {0};
-int trc[TARGETN-2] = {0};
+int c[TOCHOOSE] = {0};
+int trc[TOCHOOSE] = {0};
 
 /* tables for x,y,a,b -> xb-ya mod MODP1? */
 static int tblP1[MODP1][MODP1][MODP1][MODP1];
@@ -105,6 +134,24 @@ precompute_mod_tblP1 (void)
 				for (l=0; l < MODP1; l++)
 					tblP1[i][j][k][l] = (i*l+(MODP1-1)*j*k)%MODP1;
 }
+
+#if 0
+/* tables for x,y -> xy and x-y mod MODP1? */
+static int tblmulP1[MODP1][MODP1];
+static int tblsubP1[MODP1][MODP1];
+
+static void
+precompute_mod_tblP1 (void)
+{
+	int i, j;
+
+	for (i=0; i < MODP1; i++)
+		for (j=0; j < MODP1; j++) {
+			tblmulP1[i][j] = (i*j)%MODP1;
+			tblsubP1[i][j] = (i+(MODP1-1)*j)%MODP1;
+		}
+}
+#endif
 
 static void
 precompute_mod_matrixP1(unsigned int m2[ROWS][COLS], ntype m[ROWS][COLS])
@@ -162,11 +209,11 @@ mod2_ref_is_full_rank (void)
 	int i, j, d;
 
 	/* note that mmod2 is 1 indexed */
-	for (j = 0; j < TARGETN-2; j++) {
+	for (j = 0; j < TOCHOOSE; j++) {
 		mmod2m[j] = mmod2[trc[j]];
 	}
 	/* tack on the last column */
-	mmod2m[TARGETN-2] = mmod2[COLS];
+	mmod2m[TOCHOOSE] = mmod2[COLS];
 
 	d = 0;
 	for (j = 0; j < ROWS1; j++) {
@@ -232,6 +279,7 @@ modP1_ref_is_full_rank (unsigned int m[ROWS1][COLS1])
 				for (k = j+1; k < COLS1; k++) {
 					m[i][k] =
 						tblP1[x][y][m[d][k]][m[i][k]];
+						/*tblsubP1[ tblmulP1[x][m[i][k]] ][ tblmulP1[y][m[d][k]] ];*/
 						/* (x*m[i][k] + (MODP1-1)* y*m[d][k]) % MODP1; */
 				}
 			}
@@ -541,11 +589,11 @@ get_the_modP1_submatrix (unsigned int m2[ROWS1][COLS1], unsigned int pm[ROWS][CO
 	
 	/* use columns from the column list */
 	for (i = 0; i < ROWS-2; i++) {
-		for (j = 0; j < TARGETN-2; j++) {
+		for (j = 0; j < TOCHOOSE; j++) {
 			m2[i][j] = pm[i+1][trc[j]-1];
 		}
 		/* tack on the last column, that is always positive */
-		m2[i][TARGETN-2] = pm[i+1][COLS-1];
+		m2[i][TOCHOOSE] = pm[i+1][COLS-1];
 	}
 }
 
@@ -557,7 +605,7 @@ gmp_get_the_submatrix (__mpz_struct m2[ROWS1][COLS1], ntype m[ROWS][COLS])
 	/* use columns from the column list */
 	for (i = 0; i < ROWS-2; i++) {
 		//int isnull = TRUE;
-		for (j = 0; j < TARGETN-2; j++) {
+		for (j = 0; j < TOCHOOSE; j++) {
 			int cc = trc[j]-1;
 			mpz_set_si (&(m2[i][j]), m[i+1][cc]);
 			//if (m2[i][j] != 0) isnull = FALSE;
@@ -565,7 +613,7 @@ gmp_get_the_submatrix (__mpz_struct m2[ROWS1][COLS1], ntype m[ROWS][COLS])
 		//if (isnull)
 			//return FALSE;
 		/* tack on the last column */
-		mpz_set_si (&(m2[i][TARGETN-2]), m[i+1][COLS-1]);
+		mpz_set_si (&(m2[i][TOCHOOSE]), m[i+1][COLS-1]);
 	}
 	return TRUE;
 }
@@ -593,17 +641,20 @@ gmp_vector_nonpositive (__mpz_struct v[], int len)
 }
 
 static int
-check_pure_unreachable (int cc)
+check_pure_unreachable_undoable (int cc)
 {
 	int j;
 
 	for (j=0; j < DEGREE-1; j++) {
-		if (purex[j] == cc ||
-		    purey[j] == cc)
+		if (pure[j] == cc)
 			return TRUE;
 	}
 	for (j=0; j < UNREACHABLES; j++) {
 		if (unreachable[j] == cc)
+			return TRUE;
+	}
+	for (j=0; j < UNDOABLES; j++) {
+		if (undoable[j] == cc)
 			return TRUE;
 	}
 
@@ -612,34 +663,14 @@ check_pure_unreachable (int cc)
 
 #if 0
 static int
-checkadjacent (void)
-{
-	/* Note that since pures have been removed, adjacents are
-	 * really adjacent and undoable, so we need not check them */
-	int i;
-
-	int cclast = c[0];
-
-	/* This ought to be smarter, these are all sorted! */
-	for (i=1; i < TARGETN-2; i++) {
-		int cc = c[i];
-		if (tr[cclast]+1 == tr[cc])
-			return TRUE;
-		cclast = cc;
-	}
-	return FALSE;
-}
-#endif
-
-static int
 checkupadjacent_and_adjust_full (void)
 {
 	int i;
-	for (i=0; i < TARGETN-2-1; i++) {
+	for (i=0; i < TOCHOOSE-1; i++) {
 		int j;
 		int a = degx[c[i]];
 		int b = degy[c[i]];
-		for (j = i+1; j < TARGETN-2; j++) {
+		for (j = i+1; j < TOCHOOSE; j++) {
 			int aa = degx[c[j]];
 			int bb = degy[c[j]];
 			if (aa + bb > a+b+1) {
@@ -656,21 +687,21 @@ checkupadjacent_and_adjust_full (void)
 					exit(1);
 				}*/
 
-				if (k + TARGETN-2-j > LOGCOLS) {
-					comb_get_next_combination (c, TARGETN-2, LOGCOLS);
+				if (k + TOCHOOSE-j > LOGCOLS) {
+					comb_get_next_combination (c, TOCHOOSE, LOGCOLS);
 					return TRUE;
 				}
 				/*printf ("PREFIXUP: ");
-				for (i=0; i < TARGETN-2; i++) {
+				for (i=0; i < TOCHOOSE; i++) {
 					printf ("%d ", c[i]);
 				}*/
-				for (; j < TARGETN-2; j++) {
+				for (; j < TOCHOOSE; j++) {
 					k++;
 					c[j] = k;
 				}
 				/*
 				printf ("\nPOST FIXUP : ");
-				for (i=0; i < TARGETN-2; i++) {
+				for (i=0; i < TOCHOOSE; i++) {
 					printf ("%d ", c[i]);
 				}
 				printf ("\n");
@@ -687,26 +718,27 @@ checkupadjacent_and_adjust_full (void)
 	}
 	return FALSE;
 }
+#endif
 
 #if 0
 static int
 checkupadjacent_and_adjust_full_newslow (void)
 {
 	int i;
-	for (i=0; i < TARGETN-2-1; i++) {
+	for (i=0; i < TOCHOOSE-1; i++) {
 		int j;
 		int ul = upleft[c[i]];
 		int ur = upright[c[i]];
 		if (ul < 0 && ur < 0) 
 			return FALSE;
-		for (j = i+1; j < TARGETN-2; j++) {
+		for (j = i+1; j < TOCHOOSE; j++) {
 			int k = c[j];
 			if (ul == k || ur == k) {
-				if (k + TARGETN-2-j > LOGCOLS) {
-					comb_get_next_combination (c, TARGETN-2, LOGCOLS);
+				if (k + TOCHOOSE-j > LOGCOLS) {
+					comb_get_next_combination (c, TOCHOOSE, LOGCOLS);
 					return TRUE;
 				}
-				for (; j < TARGETN-2; j++) {
+				for (; j < TOCHOOSE; j++) {
 					k++;
 					c[j] = k;
 				}
@@ -721,10 +753,28 @@ checkupadjacent_and_adjust_full_newslow (void)
 #endif
 
 static int
+checkupadjacent (void)
+{
+	int i;
+	for (i=0; i < TOCHOOSE-1; i++) {
+		int a = degx[c[i]];
+		int b = degy[c[i]];
+		int aa = degx[c[i+1]];
+		int bb = degy[c[i+1]];
+		if ((aa == a && bb == b+1) ||
+		    (aa == a+1 && bb == b)) {
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+#if 0
+static int
 checkupadjacent_and_adjust (void)
 {
 	int i;
-	for (i=0; i < TARGETN-2-1; i++) {
+	for (i=0; i < TOCHOOSE-1; i++) {
 		int a = degx[c[i]];
 		int b = degy[c[i]];
 		int aa = degx[c[i+1]];
@@ -733,11 +783,11 @@ checkupadjacent_and_adjust (void)
 		    (aa == a+1 && bb == b)) {
 			i++;
 			int k = c[i];
-			if (k + TARGETN-2-i > LOGCOLS) {
-				comb_get_next_combination (c, TARGETN-2, LOGCOLS);
+			if (k + TOCHOOSE-i > LOGCOLS) {
+				comb_get_next_combination (c, TOCHOOSE, LOGCOLS);
 				return TRUE;
 			}
-			for (; i < TARGETN-2; i++) {
+			for (; i < TOCHOOSE; i++) {
 				k++;
 				c[i] = k;
 			}
@@ -746,7 +796,9 @@ checkupadjacent_and_adjust (void)
 	}
 	return FALSE;
 }
+#endif
 
+#if 0
 static int
 checkupadjacent_andrightsideheavy_and_adjust (void)
 {
@@ -755,7 +807,7 @@ checkupadjacent_andrightsideheavy_and_adjust (void)
 	int left = 0;
 	int a;
 	int b;
-	for (i=0; i < TARGETN-2-1; i++) {
+	for (i=0; i < TOCHOOSE-1; i++) {
 		a = degx[c[i]];
 		b = degy[c[i]];
 		int aa = degx[c[i+1]];
@@ -764,11 +816,11 @@ checkupadjacent_andrightsideheavy_and_adjust (void)
 		    (aa == a+1 && bb == b)) {
 			i++;
 			int k = c[i];
-			if (k + TARGETN-2-i > LOGCOLS) {
-				comb_get_next_combination (c, TARGETN-2, LOGCOLS);
+			if (k + TOCHOOSE-i > LOGCOLS) {
+				comb_get_next_combination (c, TOCHOOSE, LOGCOLS);
 				return TRUE;
 			}
-			for (; i < TARGETN-2; i++) {
+			for (; i < TOCHOOSE; i++) {
 				k++;
 				c[i] = k;
 			}
@@ -792,7 +844,9 @@ checkupadjacent_andrightsideheavy_and_adjust (void)
 		return 0;
 	}
 }
+#endif
 
+#if 0
 static void
 precompute_right_side_vector (void)
 {
@@ -810,6 +864,7 @@ precompute_right_side_vector (void)
 			rsvec[i] = 0;
 	}
 }
+#endif
 
 #if 0
 static void
@@ -845,77 +900,6 @@ precompute_upleftright_vector (void)
 #endif
 
 static int
-is_right_side_heavy_old (void)
-{
-	int i;
-	int right = 0;
-	int left = 0;
-	for (i=0; i < TARGETN-2; i++) {
-		int a = degx[c[i]];
-		int b = degy[c[i]];
-		if (a > b)
-			left++;
-		else if (b > a)
-			right++;
-	}
-	if (right > left) {
-		/* by this time the last guy in c is in degree d-1.  If we move this anymore
-		   to the right it will just be more and more right side heavy, so just
-		   move it all the way to the end so that next_combination will move the
-		   c[TARGETN-2-2] guy */
-		c[TARGETN-2-1] = LOGCOLS;
-		return TRUE;
-	} else {
-		return FALSE;
-	}
-	//return right > left;
-}
-
-static int
-is_right_side_heavy (void)
-{
-	int sum = 0;
-	int i;
-	for (i=0; i < TARGETN-2; i++) {
-		sum += rsvec[c[i]];
-	}
-	if (sum > 0) {
-		/* by this time the last guy in c is in degree d-1.  If we move this anymore
-		   to the right it will just be more and more right side heavy, so just
-		   move it all the way to the end so that next_combination will move the
-		   c[TARGETN-2-2] guy */
-		c[TARGETN-2-1] = LOGCOLS;
-		return TRUE;
-	} else {
-		return FALSE;
-	}
-	//return right > left;
-}
-
-static int
-is_simplesym (void)
-{
-	int sum = 0;
-	int i;
-	for (i=0; i < TARGETN-2; i++) {
-		sum += rsvec[c[i]];
-	}
-	if (sum > 0) {
-		/* by this time the last guy in c is in degree d-1.  If we move this anymore
-		   to the right it will just be more and more right side heavy, so just
-		   move it all the way to the end so that next_combination will move the
-		   c[TARGETN-2-2] guy */
-		c[TARGETN-2-1] = LOGCOLS;
-		return FALSE;
-	} else if(sum < 0) {
-		return FALSE;
-	} else {
-		return TRUE;
-	}
-	//return right > left;
-}
-
-static int
 fixup_combination (void)
 {
 	/* Note that since pures have been removed, adjacents are
@@ -925,13 +909,13 @@ fixup_combination (void)
 	int cclast = c[0];
 
 	/* This ought to be smarter, these are all sorted! */
-	for (i=1; i < TARGETN-2; i++) {
+	for (i=1; i < TOCHOOSE; i++) {
 		int cc = c[i];
 		if (tr[cclast]+1 == tr[cc]) {
 			int j;
 			cc++;
 			/* We find where we are adjacent and now make up the next reasonable combination */
-			for (j = i; j < TARGETN-2; j++) {
+			for (j = i; j < TOCHOOSE; j++) {
 				if (cc > LOGCOLS) {
 					printf ("Detected end in fixup\n");
 					return FALSE; /* no more combinations */
@@ -952,11 +936,12 @@ fixup_combination (void)
 	return TRUE;
 }
 
+#if 0
 static int
 is_symmetric(void)
 {
 	int i, j, found, xd, yd, tdeg;
-	for (i = 0; i < TARGETN-2-1; i++) {
+	for (i = 0; i < TOCHOOSE-1; i++) {
 		if (degx[c[i]] == degy[c[i]])
 			continue;
 		else if (degx[c[i]] < degy[c[i]])
@@ -965,7 +950,7 @@ is_symmetric(void)
 			xd = degx[c[i]];
 			yd = degy[c[i]];
 			found = 0;
-			for (j = i+1; j < TARGETN-2 && (degx[c[j]]+degy[c[j]]) == (xd+yd); j++) {
+			for (j = i+1; j < TOCHOOSE && (degx[c[j]]+degy[c[j]]) == (xd+yd); j++) {
 				if (xd == degy[c[j]] && yd == degx[c[j]]) {
 					found = 1;
 					break;
@@ -978,13 +963,27 @@ is_symmetric(void)
 	}
 	return TRUE;
 }
+#endif
+
+static int
+count_symmetric(void)
+{
+	int i, cnt;
+	cnt = 0;
+	for (i = 0; i < TOCHOOSE; i++) {
+		if (degx[c[i]] == degy[c[i]]) {
+			cnt++;
+		}
+	}
+	return cnt;
+}
 
 int
 main (void)
 {
-	int i, j;
+	int i, j, adder;
 	PivotsType p;
-	__mpz_struct v[TARGETN-2+1];
+	__mpz_struct v[TOCHOOSE+1];
 	int cnt = 0;
 	int startof_dminusone;
 	int startof_dminusone_c;
@@ -992,50 +991,55 @@ main (void)
 	long long notopcnt = 0;
 	long long adjcnt = 0;
 	long long adjupcnt = 0;
-	long long nonsymcnt = 0;
+	long long nosymcnt = 0;
 	long long nrowcnt = 0;
 	long long modP1fullrankcnt = 0;
 	long long mod2fullrankcnt = 0;
-	long long rightsideheavycnt = 0;
-	long long simplesymcnt = 0;
 	long long finalcnt = 0;
 	struct timeval t0;
 	struct timeval t00;
 	struct timeval t1;
 
+	printf("TOCHOOSE %d\n", TOCHOOSE);
+
+	printf ("pures: ");
 	j=0;
 	for (i=0; i < COLS-1; i++) {
 		if (mm[0][i] != 0) {
-			purex[j++] = i+1;
+			pure[j++] = i+1;
 			printf ("%d ", i+1);
 		}
 	}
 
-	startof_dminusone = purex[DEGREE-2];
+	startof_dminusone = pure[DEGREE-2];
 
-	printf ("\nun: ");
+	printf ("\nunreachables: ");
 	j = startof_dminusone+2;
 	for (i=0; i < UNREACHABLES; i++) {
 		unreachable[i] = j;
 		printf ("%d ", j);
 		j += 2;
 	}
+
 	printf ("\n");
 
-	j=0;
-	for (i=0; i < COLS-1; i++) {
-		if (mm[ROWS-1][i] != 0) {
-			purey[j++] = i+1;
-			printf ("%d ", i+1);
-		}
+	printf ("undoables: ");
+	j = 1;
+	adder = 4;
+	for (i=0; i < UNDOABLES; i++) {
+		undoable[i] = j;
+		printf ("%d ", j);
+		j += adder;
+		adder += 2;
 	}
 
 	printf ("\n");
 
+
 	printf ("tr(%d vs %d): ", LOGCOLS, COLS-1);
 	j=1;
 	for (i=0; i < LOGCOLS; i++) {
-		while (check_pure_unreachable (j))
+		while (check_pure_unreachable_undoable (j))
 			j++;
 		tr[i+1] = j;
 		printf ("%d ", j);
@@ -1055,7 +1059,11 @@ main (void)
 		int ii = 1;
 		for (j=1; j < DEGREE; j++) {
 			int k;
-			for (k=0; k <= j; k++) {
+			//printf("deg%d (j-j%2)/2=%d    ", j, (j-j%2)/2);
+			for (k=0; k <= (j-j%2)/2; k++) {
+				if (i == 0) {
+					//printf ("x^%dy^%d ", j-k, k);
+				}
 				if (ii == thecol) {
 					degx[i+1] = j-k;
 					degy[i+1] = k;
@@ -1066,21 +1074,25 @@ main (void)
 			}
 		}
 	}
+	//printf("\n");
+	//printf("\n");
 	printf ("The monomials:");
 	for (i=0; i < LOGCOLS; i++) {
 		printf (" (%d:%d)x^%dy^%d", tr[i+1], i+1, degx[i+1], degy[i+1]);
 	}
 	printf("\n");
 
-	for (i=0; i < TARGETN-2; i++)
+	//exit(1);
+
+	for (i=0; i < TOCHOOSE; i++)
 		c[i] = i+1+BEGINOFF;
 
 	if (initc[0] > 0) {
-		for (i=0; i < TARGETN-2; i++)
+		for (i=0; i < TOCHOOSE; i++)
 			c[i] = initc[i];
 	}
 
-	for (i=0; i < TARGETN-2+1; i++)
+	for (i=0; i < TOCHOOSE+1; i++)
 		mpz_init (&(v[i]));
 	for (i = 0; i < ROWS1; i++) {
 		for (j = 0; j < COLS1; j++) {
@@ -1091,7 +1103,7 @@ main (void)
 	precompute_mod_tblP1 ();
 	precompute_mod_matrixP1 (mm31, mm);
 	precompute_mod_matrix_mod2 (mmod2, mm);
-	precompute_right_side_vector ();
+	/*precompute_right_side_vector ();*/
 	//precompute_upleftright_vector ();
 
 	get_the_bitmap_matrix (mbit, mm);
@@ -1111,7 +1123,7 @@ main (void)
 	/* for testing */
 	if (getenv ("DORANDOM") != NULL) {
 		srand (time (NULL) ^ getpid ());
-		comb_get_random_combination (c, TARGETN-2, LOGCOLS);
+		comb_get_random_combination (c, TOCHOOSE, LOGCOLS);
 #ifdef ENDOFF
 		if (c[0] > ENDOFF)
 			c[0] = ENDOFF;
@@ -1119,18 +1131,18 @@ main (void)
 	}
 
 	printf("   starting at: ");
-	for (i = 0; i < TARGETN-2; i++) {
+	for (i = 0; i < TOCHOOSE; i++) {
 		printf ("%d", tr[c[i]]);
-		if (i < TARGETN-2-1)
+		if (i < TOCHOOSE-1)
 			printf (",");
 	}
 	printf("   (");
-	for (i = 0; i < TARGETN-2; i++) {
+	for (i = 0; i < TOCHOOSE; i++) {
 		printf ("%d", c[i]);
-		if (i < TARGETN-2-1)
+		if (i < TOCHOOSE-1)
 			printf (",");
 	}
-	printf("\n");
+	printf(")\n");
 
 	fflush(stdout);
 
@@ -1149,33 +1161,37 @@ do_loop_again_with_new_combination:
 		allcnt ++;
 
 		/* must include one term of degree d-1 */
-		if (c[TARGETN-2-1] < startof_dminusone_c) {
+		if (c[TOCHOOSE-1] < startof_dminusone_c) {
 			notopcnt++;
-			c[TARGETN-2-1] = startof_dminusone_c;
-		}
-
-		if ( ! is_simplesym ()) {
-			simplesymcnt++;
-			continue;
+			c[TOCHOOSE-1] = startof_dminusone_c;
 		}
 
 
 		/* Must not include any adjacent terms
 		 * such polynomials are not optional */
-#if (TARGETN-2) == 4
+#if (TOCHOOSE) == 2
+		/* At the same time set trc */
+		trc[0] = tr[c[0]];
+		if (trc[0]+1 == (trc[1] = tr[c[1]]))
+#elif (TOCHOOSE) == 3
+		/* At the same time set trc */
+		trc[0] = tr[c[0]];
+		if (trc[0]+1 == (trc[1] = tr[c[1]]) ||
+		    trc[1]+1 == (trc[2] = tr[c[2]]))
+#elif (TOCHOOSE) == 4
 		/* At the same time set trc */
 		trc[0] = tr[c[0]];
 		if (trc[0]+1 == (trc[1] = tr[c[1]]) ||
 		    trc[1]+1 == (trc[2] = tr[c[2]]) ||
 		    trc[2]+1 == (trc[3] = tr[c[3]]))
-#elif (TARGETN-2) == 5
+#elif (TOCHOOSE) == 5
 		/* At the same time set trc */
 		trc[0] = tr[c[0]];
 		if (trc[0]+1 == (trc[1] = tr[c[1]]) ||
 		    trc[1]+1 == (trc[2] = tr[c[2]]) ||
 		    trc[2]+1 == (trc[3] = tr[c[3]]) ||
 		    trc[3]+1 == (trc[4] = tr[c[4]]))
-#elif (TARGETN-2) == 6
+#elif (TOCHOOSE) == 6
 		/* At the same time set trc */
 		trc[0] = tr[c[0]];
 		if (trc[0]+1 == (trc[1] = tr[c[1]]) ||
@@ -1183,7 +1199,7 @@ do_loop_again_with_new_combination:
 		    trc[2]+1 == (trc[3] = tr[c[3]]) ||
 		    trc[3]+1 == (trc[4] = tr[c[4]]) ||
 		    trc[4]+1 == (trc[5] = tr[c[5]]))
-#elif (TARGETN-2) == 7
+#elif (TOCHOOSE) == 7
 		/* At the same time set trc */
 		trc[0] = tr[c[0]];
 		if (trc[0]+1 == (trc[1] = tr[c[1]]) ||
@@ -1192,7 +1208,7 @@ do_loop_again_with_new_combination:
 		    trc[3]+1 == (trc[4] = tr[c[4]]) ||
 		    trc[4]+1 == (trc[5] = tr[c[5]]) ||
 		    trc[5]+1 == (trc[6] = tr[c[6]]))
-#elif (TARGETN-2) == 8
+#elif (TOCHOOSE) == 8
 		/* At the same time set trc */
 		trc[0] = tr[c[0]];
 		if (trc[0]+1 == (trc[1] = tr[c[1]]) ||
@@ -1202,7 +1218,7 @@ do_loop_again_with_new_combination:
 		    trc[4]+1 == (trc[5] = tr[c[5]]) ||
 		    trc[5]+1 == (trc[6] = tr[c[6]]) ||
 		    trc[6]+1 == (trc[7] = tr[c[7]]))
-#elif (TARGETN-2) == 9
+#elif (TOCHOOSE) == 9
 		/* At the same time set trc */
 		trc[0] = tr[c[0]];
 		if (trc[0]+1 == (trc[1] = tr[c[1]]) ||
@@ -1213,7 +1229,7 @@ do_loop_again_with_new_combination:
 		    trc[5]+1 == (trc[6] = tr[c[6]]) ||
 		    trc[6]+1 == (trc[7] = tr[c[7]]) ||
 		    trc[7]+1 == (trc[8] = tr[c[8]]))
-#elif (TARGETN-2) == 10
+#elif (TOCHOOSE) == 10
 		/* At the same time set trc */
 		trc[0] = tr[c[0]];
 		if (trc[0]+1 == (trc[1] = tr[c[1]]) ||
@@ -1229,7 +1245,7 @@ do_loop_again_with_new_combination:
 #		error "adjacent check not defined.  Could use loop and checkadjacent function!"
 		{
 			int ii;
-			for (ii = 0; ii < TARGETN-2; ii++) {
+			for (ii = 0; ii < TOCHOOSE; ii++) {
 				trc[ii] = tr[c[ii]];
 			}
 		}
@@ -1243,31 +1259,43 @@ do_loop_again_with_new_combination:
 			goto do_loop_again_with_new_combination;
 		}
 
+		/*{
+			int ii;
+			for (ii = 0; ii < TOCHOOSE; ii++) {
+				trc[ii] = tr[c[ii]];
+			}
+		}*/
+
 		/* all entries must affect the top degree terms */
 		if ((mbit[trc[0]] |
-#if (TARGETN-2) == 4
+#if (TOCHOOSE) == 2
+		     mbit[trc[1]] |
+#elif (TOCHOOSE) == 3
+		     mbit[trc[1]] |
+		     mbit[trc[2]] |
+#elif (TOCHOOSE) == 4
 		     mbit[trc[1]] |
 		     mbit[trc[2]] |
 		     mbit[trc[3]] |
-#elif (TARGETN-2) == 5
+#elif (TOCHOOSE) == 5
 		     mbit[trc[1]] |
 		     mbit[trc[2]] |
 		     mbit[trc[3]] |
 		     mbit[trc[4]] |
-#elif (TARGETN-2) == 6
+#elif (TOCHOOSE) == 6
 		     mbit[trc[1]] |
 		     mbit[trc[2]] |
 		     mbit[trc[3]] |
 		     mbit[trc[4]] |
 		     mbit[trc[5]] |
-#elif (TARGETN-2) == 7
+#elif (TOCHOOSE) == 7
 		     mbit[trc[1]] |
 		     mbit[trc[2]] |
 		     mbit[trc[3]] |
 		     mbit[trc[4]] |
 		     mbit[trc[5]] |
 		     mbit[trc[6]] |
-#elif (TARGETN-2) == 8
+#elif (TOCHOOSE) == 8
 		     mbit[trc[1]] |
 		     mbit[trc[2]] |
 		     mbit[trc[3]] |
@@ -1275,7 +1303,7 @@ do_loop_again_with_new_combination:
 		     mbit[trc[5]] |
 		     mbit[trc[6]] |
 		     mbit[trc[7]] |
-#elif (TARGETN-2) == 9
+#elif (TOCHOOSE) == 9
 		     mbit[trc[1]] |
 		     mbit[trc[2]] |
 		     mbit[trc[3]] |
@@ -1284,7 +1312,7 @@ do_loop_again_with_new_combination:
 		     mbit[trc[6]] |
 		     mbit[trc[7]] |
 		     mbit[trc[8]] |
-#elif (TARGETN-2) == 10
+#elif (TOCHOOSE) == 10
 		     mbit[trc[1]] |
 		     mbit[trc[2]] |
 		     mbit[trc[3]] |
@@ -1299,6 +1327,11 @@ do_loop_again_with_new_combination:
 #endif
 		     0x0) != FULLROWS) {
 			nrowcnt ++;
+			continue;
+		}
+
+		if (checkupadjacent ()) {
+			adjupcnt++;
 			continue;
 		}
 
@@ -1322,17 +1355,25 @@ do_loop_again_with_new_combination:
 			continue;
 		}*/
 
+		/*
 		if ( ! is_symmetric ()) {
-			nonsymcnt++;
+			nosymcnt++;
+			continue;
+		}
+		*/
+
+		if (count_symmetric () != ((TARGETN-2)%2)) {
+			nosymcnt++;
 			continue;
 		}
 
 
-
+		/*
 		if (checkupadjacent_and_adjust_full ()) {
 			adjupcnt++;
 			goto do_loop_again_with_new_combination;
 		}
+		*/
 		
 
 		if (mod2_ref_is_full_rank ()) {
@@ -1356,33 +1397,38 @@ do_loop_again_with_new_combination:
 		if (gmp_int_rref (mm4, &p, TRUE /* dim_one_only */)) {
 			gmp_null_vector (mm4, v, &p);
 			if (__builtin_expect(
-			     (gmp_vector_nonnegative (v, TARGETN-2+1) ||
-			      gmp_vector_nonpositive (v, TARGETN-2+1)),
+			     (gmp_vector_nonnegative (v, TOCHOOSE+1) ||
+			      gmp_vector_nonpositive (v, TOCHOOSE+1)),
 			     0)) {
 				printf ("******** EXAMPLE: ");
-				for (i = 0; i < TARGETN-2+1; i++) {
+				for (i = 0; i < TOCHOOSE+1; i++) {
 					if (mpz_fits_slong_p (&(v[i]))) {
 						long vi = mpz_get_si (&(v[i]));
 						printf ("%ld", vi);
 					} else {
 						printf ("(too large)");
 					}
-					if (i < TARGETN-2) {
-						printf ("x^%dy^%d + ", degx[c[i]], degy[c[i]]);
+					if (i < TOCHOOSE) {
+						if (degx[c[i]] == degy[c[i]])
+							printf ("x^%dy^%d + ", degx[c[i]], degy[c[i]]);
+						else
+							printf ("(x^%dy^%d+x^%dy^%d) + ",
+								degx[c[i]], degy[c[i]],
+								degy[c[i]], degx[c[i]]);
 					} else {
 						printf ("(x^%d + y^%d)", DEGREE, DEGREE);
 					}
 				}
 				printf("   at: ");
-				for (i = 0; i < TARGETN-2; i++) {
+				for (i = 0; i < TOCHOOSE; i++) {
 					printf ("%d", trc[i]);
-					if (i < TARGETN-2-1)
+					if (i < TOCHOOSE-1)
 						printf (",");
 				}
 				printf("   (");
-				for (i = 0; i < TARGETN-2; i++) {
+				for (i = 0; i < TOCHOOSE; i++) {
 					printf ("%d", c[i]);
-					if (i < TARGETN-2-1)
+					if (i < TOCHOOSE-1)
 						printf (",");
 				}
 				printf("\n");
@@ -1392,7 +1438,8 @@ do_loop_again_with_new_combination:
 		}
 
 status_update:
-		if (__builtin_expect(j == 200000000, 0)) {
+	      //if (__builtin_expect(j == 200000000, 0)) {
+		if (__builtin_expect(j == 20000000, 0)) {
 			long long elapsed, overall_elapsed_ms;
 
 			gettimeofday(&t1, 0);
@@ -1402,14 +1449,19 @@ status_update:
 			t0 = t1;
 
 			printf("at: ");
-			for (i = 0; i < TARGETN-2; i++) {
+			/*for (i = 0; i < TOCHOOSE; i++) {
 				printf ("%d,", tr[c[i]]);
 			}
-			printf(" (");
-			for (i = 0; i < TARGETN-2; i++) {
+			printf(" (");*/
+			for (i = 0; i < TOCHOOSE; i++) {
 				printf ("%d,", c[i]);
 			}
-			printf(" allcnt: %'Ld elapsed ms: %g overall ms: %'Ld\n", allcnt, ((double)elapsed)/1000.0, overall_elapsed_ms);
+			printf(" found: %d allcnt: %'Ld elapsed ms: %g overall ms: %'Ld (hours %g)\n",
+			       cnt,
+			       allcnt,
+			       ((double)elapsed)/1000.0,
+			       overall_elapsed_ms,
+			       ((double)overall_elapsed_ms)/(1000.0*60.0*60.0));
 			fflush(stdout);
 			j=0;
 			if (getenv ("JUSTQUIT") != NULL)
@@ -1417,20 +1469,20 @@ status_update:
 
 			/* for testing */
 			if (getenv ("DORANDOM") != NULL) {
-				comb_get_random_combination (c, TARGETN-2, LOGCOLS);
+				comb_get_random_combination (c, TOCHOOSE, LOGCOLS);
 #ifdef ENDOFF
 				if (c[0] > ENDOFF)
 					c[0] = ENDOFF;
 #endif
 				printf("new random one: ");
-				for (i = 0; i < TARGETN-2; i++) {
+				for (i = 0; i < TOCHOOSE; i++) {
 					printf ("%d,", c[i]);
 				}
 				printf("\n");
 			}
 		}
 		j++;
-	} while (__builtin_expect (comb_get_next_combination (c, TARGETN-2, LOGCOLS),
+	} while (__builtin_expect (comb_get_next_combination (c, TOCHOOSE, LOGCOLS),
 				   TRUE));
 
 	printf ("EXAMPLES: %d\n", cnt);
@@ -1441,23 +1493,21 @@ status_update:
 
 		gettimeofday(&t1, 0);
 		overall_elapsed_ms = (t1.tv_sec-t00.tv_sec)*1000LL + (t1.tv_usec-t00.tv_usec)/1000LL;
-		printf ("elapsed ms: %'Ld\n", overall_elapsed_ms);
+		printf ("elapsed ms: %'Ld (hours: %g)\n",
+			overall_elapsed_ms,
+			((double)overall_elapsed_ms)/(1000.0*60.0*60.0));
 	}
 
 	printf ("allcnt: %'Ld notopcnt: %'Ld adjcnt: %'Ld "
-		"nonsymcnt: %'Ld "
+		"nosymcnt: %'Ld "
 		"nrowcnt: %'Ld "
-		"rightsideheavycnt: %'Ld "
-		"simplesymcnt: %'Ld "
 		"adjupcnt: %'Ld "
 		"mod2fullrankcnt: %'Ld "
 		"modP1fullrankcnt: %'Ld "
 		"finalcnt: %'Ld\n",
 		allcnt, notopcnt, adjcnt,
-		nonsymcnt,
+		nosymcnt,
 		nrowcnt, 
-		rightsideheavycnt,
-		simplesymcnt,
 		adjupcnt,
 		mod2fullrankcnt,
 		modP1fullrankcnt,
